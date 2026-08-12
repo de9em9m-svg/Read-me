@@ -1,4 +1,4 @@
-name: Build Anime Ascension V13 APK
+name: Build Anime Ascension V17 APK
 
 on:
   workflow_dispatch:
@@ -30,19 +30,19 @@ jobs:
         with:
           gradle-version: '8.13'
 
-      - name: Extract Anime Ascension V13 source
+      - name: Extract Anime Ascension V17 source
         run: |
           mkdir game
-          unzip -q AnimeAscensionProjectV13.zip -d game
+          unzip -q AnimeAscensionProjectV17.zip -d game
 
-      - name: Build V13 APK
+      - name: Build V17 APK
         run: gradle -p game :app:assembleDebug --stacktrace
 
       - name: Rename APK
-        run: cp game/app/build/outputs/apk/debug/app-debug.apk AnimeAscension-v13.0.0.apk
+        run: cp game/app/build/outputs/apk/debug/app-debug.apk AnimeAscension-v17.0.0.apk
 
-      - name: Upload V13 APK
+      - name: Upload V17 APK
         uses: actions/upload-artifact@v4
         with:
-          name: AnimeAscension-APK-V13
-          path: AnimeAscension-v13.0.0.apk
+          name: AnimeAscension-APK-V17
+          path: AnimeAscension-v17.0.0.apk
