@@ -1,0 +1,151 @@
+<style id="anime-ascension-v2-style">
+/* Anime Ascension V2 combat polish */
+#arena{isolation:isolate}
+.v2Overlay{position:absolute;inset:0;pointer-events:none;overflow:hidden;z-index:8}
+.v2ImpactFlash{position:absolute;inset:-8%;opacity:0;background:radial-gradient(circle at var(--ix,70%) var(--iy,55%),rgba(255,255,255,.92) 0 2%,rgba(116,218,255,.42) 5%,rgba(255,110,90,.16) 13%,transparent 32%);mix-blend-mode:screen}
+.v2ImpactFlash.show{animation:v2Impact .19s ease-out forwards}
+@keyframes v2Impact{0%{opacity:0;transform:scale(.82)}18%{opacity:1}100%{opacity:0;transform:scale(1.08)}}
+.v2SpeedLines{position:absolute;inset:-15%;opacity:0;background:repeating-linear-gradient(166deg,transparent 0 18px,rgba(157,229,255,.12) 19px 20px,transparent 21px 42px);transform:translateX(-8%) skewX(-10deg);mix-blend-mode:screen}
+.v2SpeedLines.show{animation:v2Lines .42s ease-out forwards}
+@keyframes v2Lines{0%{opacity:0;transform:translateX(-16%) skewX(-10deg)}18%{opacity:.9}100%{opacity:0;transform:translateX(10%) skewX(-10deg)}}
+.v2Combo{position:absolute;right:5.5%;top:17%;display:flex;flex-direction:column;align-items:flex-end;opacity:0;transform:translateY(8px) scale(.9);transition:.14s;filter:drop-shadow(0 4px 5px #000b)}
+.v2Combo.show{opacity:1;transform:translateY(0) scale(1)}
+.v2Combo b{font-size:clamp(26px,4.4vw,52px);line-height:.9;color:#fff3a5;text-shadow:0 0 12px #ffae33,2px 3px 0 #7a2b19;font-style:italic}
+.v2Combo span{font-size:11px;font-weight:1000;letter-spacing:.18em;color:#8de8ff;margin-top:5px}
+.v2CinemaBar{position:absolute;left:0;right:0;height:0;background:#000;z-index:12;transition:height .18s ease-out}.v2CinemaBar.top{top:0}.v2CinemaBar.bottom{bottom:0}.v2Overlay.cinematic .v2CinemaBar{height:8.5%}
+.v2UltTitle{position:absolute;left:50%;top:20%;transform:translate(-50%,-14px) scale(.94);opacity:0;z-index:13;font-size:clamp(23px,5vw,58px);font-weight:1000;font-style:italic;letter-spacing:.12em;text-align:center;white-space:nowrap;text-shadow:0 4px 0 #000,0 0 24px currentColor}
+.v2UltTitle.show{animation:v2UltTitle .9s cubic-bezier(.15,.8,.2,1) forwards}
+@keyframes v2UltTitle{0%{opacity:0;transform:translate(-50%,-20px) scale(.85)}18%,70%{opacity:1;transform:translate(-50%,0) scale(1)}100%{opacity:0;transform:translate(-50%,7px) scale(1.04)}}
+.v2Dust{position:absolute;width:120px;height:34px;border-radius:50%;background:radial-gradient(ellipse,rgba(210,194,165,.32),transparent 70%);filter:blur(3px);opacity:0;animation:v2Dust .46s ease-out forwards}
+@keyframes v2Dust{0%{opacity:.8;transform:translate(-50%,-50%) scale(.35)}100%{opacity:0;transform:translate(-50%,-80%) scale(1.5)}}
+.unit.v2DashGhost:after{content:"";position:absolute;inset:18% 12% 2%;background:inherit;opacity:.22;filter:blur(5px);transform:translateX(var(--ghostX,-34px));pointer-events:none}
+#playerUnit.combatActive .char,#enemyUnit.combatActive .char{filter:drop-shadow(0 10px 7px #000d) drop-shadow(0 0 19px #74dfff88) brightness(1.12)!important}
+@media (orientation:portrait){.v2Combo{top:22%;right:3%}.v2Overlay.cinematic .v2CinemaBar{height:6%}}
+</style>
+<script id="anime-ascension-v2-combat">
+(()=>{
+  'use strict';
+  const VERSION='12.0.0-combat-v2';
+  const profiles={
+    kaizen:{total:760,contact:345,reach:174,back:18,lift:-22,rot:5,scale:1.08,color:'#62ddff'},
+    raiko:{total:690,contact:300,reach:184,back:14,lift:-28,rot:7,scale:1.07,color:'#8eeaff'},
+    noctis:{total:710,contact:315,reach:178,back:16,lift:-18,rot:6,scale:1.07,color:'#b880ff'},
+    ryu:{total:830,contact:390,reach:166,back:24,lift:-10,rot:7,scale:1.12,color:'#ff8b52'},
+    ren:{total:700,contact:310,reach:170,back:15,lift:-24,rot:5,scale:1.07,color:'#ffe66d'},
+    kuro:{total:720,contact:320,reach:176,back:17,lift:-20,rot:6,scale:1.08,color:'#ff76cb'},
+    aren:{total:900,contact:430,reach:148,back:28,lift:-7,rot:5,scale:1.13,color:'#e9bf72'}
+  };
+  let combo=0,comboTimer=0;
+
+  function q(id){return document.getElementById(id)}
+  function ensureV2(){
+    const arena=q('arena'); if(!arena)return null;
+    let o=q('v2Overlay'); if(o)return o;
+    o=document.createElement('div'); o.id='v2Overlay'; o.className='v2Overlay';
+    o.innerHTML='<div class="v2ImpactFlash"></div><div class="v2SpeedLines"></div><div class="v2Combo"><b>2</b><span>COMBO</span></div><div class="v2UltTitle"></div><div class="v2CinemaBar top"></div><div class="v2CinemaBar bottom"></div>';
+    arena.appendChild(o); return o;
+  }
+  function pulseClass(el,cls,ms=250){if(!el)return;el.classList.remove(cls);void el.offsetWidth;el.classList.add(cls);setTimeout(()=>el.classList.remove(cls),ms)}
+  function centerOf(id){try{return unitCenter(id)}catch(_){const r=q(id)?.getBoundingClientRect();return r?{x:r.left+r.width/2,y:r.top+r.height/2}:{x:innerWidth/2,y:innerHeight/2}}}
+  function v2Impact(target='enemyUnit',heavy=false,color){
+    const o=ensureV2(); if(!o)return; const pt=centerOf(target),a=q('arena')?.getBoundingClientRect();
+    const f=o.querySelector('.v2ImpactFlash'); if(f&&a){f.style.setProperty('--ix',((pt.x-a.left)/a.width*100)+'%');f.style.setProperty('--iy',((pt.y-a.top)/a.height*100)+'%');pulseClass(f,'show',220)}
+    const lines=o.querySelector('.v2SpeedLines');pulseClass(lines,'show',heavy?500:360);
+    if(typeof spawnSparks==='function')spawnSparks(pt.x,pt.y,color||profiles[state.fighter]?.color||'#8de8ff',heavy?10:6,heavy?92:58);
+    if(heavy&&typeof spawnFx==='function'){spawnFx('shock',pt.x,pt.y,{color:color||'#ffe27a',duration:.42});spawnFx('ring',pt.x,pt.y,{color:'#ffffff',duration:.24,width:84,height:84});}
+  }
+  function dust(unitId){const o=ensureV2();if(!o)return;const pt=centerOf(unitId);const a=q('arena')?.getBoundingClientRect();if(!a)return;const d=document.createElement('i');d.className='v2Dust';d.style.left=(pt.x-a.left)+'px';d.style.top=(pt.y-a.top+115)+'px';o.appendChild(d);setTimeout(()=>d.remove(),520)}
+  function showCombo(){
+    const o=ensureV2(),el=o?.querySelector('.v2Combo');if(!el)return;
+    el.querySelector('b').textContent=combo;el.classList.toggle('show',combo>=2);
+    clearTimeout(comboTimer);comboTimer=setTimeout(()=>{combo=0;el.classList.remove('show')},1450);
+  }
+  function cinema(title,color){
+    const o=ensureV2();if(!o)return;o.classList.add('cinematic');const t=o.querySelector('.v2UltTitle');t.textContent=title||'ULTIMATE';t.style.color=color||'#8de8ff';pulseClass(t,'show',950);setTimeout(()=>o.classList.remove('cinematic'),980);
+  }
+  function ghost(unitId,ms=420){const u=q(unitId);if(!u)return;u.classList.add('v2DashGhost');u.style.setProperty('--ghostX',unitId==='enemyUnit'?'34px':'-34px');setTimeout(()=>u.classList.remove('v2DashGhost'),ms)}
+
+  // Stronger side-view auto attack motion, while preserving all original damage/timing logic.
+  realisticBasicMotion=function(){
+    const p=profiles[state.fighter]||profiles.kaizen,u=q('playerUnit');if(!u)return p.contact;
+    u.classList.remove('idleBob');u.classList.add('combatActive');ghost('playerUnit',p.total*.72);dust('playerUnit');
+    if(typeof lockCombatBody==='function')lockCombatBody('playerChar',p.total+100,-4,-p.rot*.8,p.scale);
+    try{setPoseDirect('guard')}catch(_){}
+    if(typeof animateFrames==='function')animateFrames(u,[
+      {offset:0,transform:'translate3d(0,0,0) scale(1)'},
+      {offset:.10,transform:`translate3d(${-p.back}px,4px,0) scale(.98) rotate(-1deg)`},
+      {offset:.25,transform:`translate3d(${p.reach*.25}px,${p.lift*.35}px,0) scale(1.015)`},
+      {offset:p.contact/p.total,transform:`translate3d(${p.reach}px,${p.lift}px,0) scale(${p.scale}) rotate(${p.rot}deg)`},
+      {offset:Math.min(.78,p.contact/p.total+.13),transform:`translate3d(${p.reach*.62}px,3px,0) scale(1.025) rotate(${p.rot*.35}deg)`},
+      {offset:1,transform:'translate3d(0,0,0) scale(1) rotate(0)'}
+    ],p.total,'cubic-bezier(.14,.82,.18,1)');
+    setTimeout(()=>{try{setPoseDirect('dash')}catch(_){}},Math.max(45,p.contact-190));
+    setTimeout(()=>{try{setPoseDirect('contact')}catch(_){}},Math.max(90,p.contact-58));
+    setTimeout(()=>{try{setPoseDirect('recovery')}catch(_){}},p.contact+100);
+    setTimeout(()=>{try{setPoseDirect('idle')}catch(_){}u.classList.remove('combatActive');u.classList.add('idleBob')},p.total+25);
+    return p.contact;
+  };
+
+  realisticEnemyMotion=function(special=false){
+    const u=q('enemyUnit');if(!u)return special?350:300;const total=special?790:680,contact=special?370:305,reach=special?176:146,lift=special?-22:-12;
+    u.classList.remove('idleBob');u.classList.add('combatActive');ghost('enemyUnit',total*.72);dust('enemyUnit');
+    if(typeof lockCombatBody==='function')lockCombatBody('enemyChar',total+90,-3,special?6:4,special?1.10:1.06);
+    if(typeof animateFrames==='function')animateFrames(u,[
+      {offset:0,transform:'translate3d(0,0,0)'},{offset:.12,transform:'translate3d(15px,3px,0) scale(.985)'},
+      {offset:.31,transform:`translate3d(${-reach*.28}px,${lift*.35}px,0) scale(1.02)`},
+      {offset:contact/total,transform:`translate3d(${-reach}px,${lift}px,0) scale(${special?1.11:1.07}) rotate(-5deg)`},
+      {offset:.80,transform:`translate3d(${-reach*.58}px,3px,0) scale(1.02)`},{offset:1,transform:'translate3d(0,0,0)'}
+    ],total,'cubic-bezier(.15,.78,.2,1)');
+    setTimeout(()=>{u.classList.remove('combatActive');u.classList.add('idleBob')},total+25);return contact;
+  };
+
+  realisticHitReaction=function(unitId,heavy=false){
+    const u=q(unitId);if(!u)return;const enemy=unitId==='enemyUnit',dir=enemy?1:-1,dist=heavy?54:34,dur=heavy?430:310;
+    if(!enemy){try{setPoseDirect('hit')}catch(_){}setTimeout(()=>{try{if(state.running)setPoseDirect('idle')}catch(_){}},dur)}
+    if(typeof animateFrames==='function')animateFrames(u,[
+      {offset:0,transform:'translate3d(0,0,0) rotate(0) scale(1)'},
+      {offset:.16,transform:`translate3d(${dir*dist}px,${heavy?-12:-6}px,0) rotate(${dir*(heavy?4:2.5)}deg) scale(${heavy?.94:.975})`},
+      {offset:.48,transform:`translate3d(${dir*dist*.62}px,2px,0) rotate(${dir*1.2}deg) scale(.99)`},
+      {offset:1,transform:'translate3d(0,0,0) rotate(0) scale(1)'}
+    ],dur,'cubic-bezier(.12,.72,.24,1)');
+    if(typeof lockCombatBody==='function')lockCombatBody(enemy?'enemyChar':'playerChar',dur+50,heavy?7:4,dir*(heavy?6:3),heavy?.94:.97);
+  };
+
+  const oldBasic=basicAttackAnim;
+  basicAttackAnim=function(){
+    const ret=oldBasic.apply(this,arguments),p=profiles[state.fighter]||profiles.kaizen,c=p.color;
+    setTimeout(()=>v2Impact('enemyUnit',['ryu','aren'].includes(state.fighter),c),Math.max(0,p.contact-8));
+    // fighter-specific visual signatures
+    const e=centerOf('enemyUnit');
+    if(state.fighter==='raiko')setTimeout(()=>{if(typeof spawnComboSlash==='function')spawnComboSlash(e.x,e.y,c,3,14,-35,40)},p.contact-22);
+    if(state.fighter==='noctis')setTimeout(()=>{if(typeof spawnFx==='function'){spawnFx('sigil',e.x,e.y,{color:c,width:130,height:130,duration:.45});spawnFx('burst',e.x,e.y,{color:c,duration:.38})}},p.contact-25);
+    if(state.fighter==='ryu'||state.fighter==='aren')setTimeout(()=>{if(typeof spawnFx==='function')spawnFx('groundCrack',e.x,e.y+74,{color:c,duration:.48})},p.contact-10);
+    return ret;
+  };
+
+  const oldHitEnemy=hitEnemy;
+  hitEnemy=function(raw,crit=false){combo++;showCombo();v2Impact('enemyUnit',crit||raw>(state.enemy?.maxHP||999999)*.12,profiles[state.fighter]?.color);return oldHitEnemy.apply(this,arguments)};
+  const oldHitPlayer=hitPlayer;
+  hitPlayer=function(raw){combo=0;showCombo();v2Impact('playerUnit',raw>(state.player?.maxHP||999999)*.16,'#ff6f8f');return oldHitPlayer.apply(this,arguments)};
+
+  const oldAnimateSkill=animateSkill;
+  animateSkill=function(id){
+    const ret=oldAnimateSkill.apply(this,arguments),p=profiles[state.fighter]||profiles.kaizen,c=p.color,enemy=centerOf('enemyUnit'),player=centerOf('playerUnit');
+    if(id==='ult'){
+      const name=(roster[state.fighter]?.skills||[]).find(s=>s.id==='ult')?.name||'ULTIMATE';cinema(name.toUpperCase(),c);
+      setTimeout(()=>{v2Impact('enemyUnit',true,c);if(typeof spawnArcFan==='function')spawnArcFan(enemy.x,enemy.y,c,6,-52,21,-22,-8,.56)},340);
+      setTimeout(()=>{if(typeof spawnPillarStrike==='function')spawnPillarStrike(enemy.x,enemy.y+10,c,300,.7)},430);
+    }else{
+      pulseClass(ensureV2()?.querySelector('.v2SpeedLines'),'show',440);
+      if(typeof spawnFx==='function')spawnFx('charge',player.x,player.y-20,{color:c,duration:.34});
+    }
+    return ret;
+  };
+
+  // Make the existing shake feel heavier without changing battle state.
+  arenaShake=function(){const a=q('arena');if(!a)return;if(typeof animateFrames==='function')animateFrames(a,[{transform:'translate3d(0,0,0)'},{transform:'translate3d(-7px,3px,0)'},{transform:'translate3d(6px,-2px,0)'},{transform:'translate3d(-4px,1px,0)'},{transform:'translate3d(0,0,0)'}],250,'linear')};
+
+  ensureV2();
+  console.log('Anime Ascension '+VERSION+' loaded');
+})();
+</script>
